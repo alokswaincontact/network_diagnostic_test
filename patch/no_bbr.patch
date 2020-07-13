@@ -1,0 +1,110 @@
+diff --git a/bbr/bbr_linux.go b/bbr/bbr_linux.go
+index 3b69910..b804c5c 100644
+--- a/bbr/bbr_linux.go
++++ b/bbr/bbr_linux.go
+@@ -6,7 +6,7 @@ package bbr
+ import "C"
+ 
+ import (
+-	"math"
++//	"math"
+ 	"os"
+ 	"syscall"
+ 	"unsafe"
+@@ -22,13 +22,14 @@ func enableBBR(fp *os.File) error {
+ 
+ func getMaxBandwidthAndMinRTT(fp *os.File) (model.BBRInfo, error) {
+ 	cci := C.union_tcp_cc_info{}
+-	size := uint32(C.sizeof_union_tcp_cc_info)
++	size := 1000 //uint32(C.sizeof_union_tcp_cc_info)
+ 	// Note: Fd() returns uintptr but on Unix we can safely use int for sockets.
+ 	_, _, err := syscall.Syscall6(
+ 		uintptr(syscall.SYS_GETSOCKOPT),
+ 		uintptr(int(fp.Fd())),
+ 		uintptr(C.IPPROTO_TCP),
+-		uintptr(C.TCP_CC_INFO),
++		//uintptr(C.TCP_CC_INFO),
++		uintptr(0),
+ 		uintptr(unsafe.Pointer(&cci)),
+ 		uintptr(unsafe.Pointer(&size)),
+ 		uintptr(0))
+@@ -48,18 +49,20 @@ func getMaxBandwidthAndMinRTT(fp *os.File) (model.BBRInfo, error) {
+ 	// data structures (i.e. Vegas and DCTCP) both occupy four 32 bit words.
+ 	//
+ 	// See include/uapi/linux/inet_diag.h in torvalds/linux@bbb6189d.
+-	if size != C.sizeof_struct_tcp_bbr_info {
+-		return metrics, syscall.EINVAL
+-	}
+-	bbrip := (*C.struct_tcp_bbr_info)(unsafe.Pointer(&cci[0]))
++	//if size != C.sizeof_struct_tcp_bbr_info {
++	//	return metrics, syscall.EINVAL
++	//}
++	//bbrip := (*C.struct_tcp_bbr_info)(unsafe.Pointer(&cci[0]))
+ 	// Convert the values from the kernel provided units to the units that
+ 	// we're going to use in ndt7. The units we use are the most common ones
+ 	// in which people typically expects these variables.
+-	maxbw := uint64(bbrip.bbr_bw_hi)<<32 | uint64(bbrip.bbr_bw_lo)
+-	if maxbw > math.MaxInt64 {
+-		return metrics, syscall.EOVERFLOW
+-	}
+-	metrics.MaxBandwidth = int64(maxbw)  // Java has no uint64
+-	metrics.MinRTT = int64(bbrip.bbr_min_rtt)
++	//maxbw := uint64(bbrip.bbr_bw_hi)<<32 | uint64(bbrip.bbr_bw_lo)
++	//if maxbw > math.MaxInt64 {
++	//	return metrics, syscall.EOVERFLOW
++	//}
++	//metrics.MaxBandwidth = int64(maxbw)  // Java has no uint64
++	metrics.MaxBandwidth = 100
++	//metrics.MinRTT = int64(bbrip.bbr_min_rtt)
++	metrics.MinRTT = int64(10)
+ 	return metrics, nil
+ }
+diff --git a/ndt7/measurer/measurer.go b/ndt7/measurer/measurer.go
+index da1afa6..d718a60 100644
+--- a/ndt7/measurer/measurer.go
++++ b/ndt7/measurer/measurer.go
+@@ -9,12 +9,12 @@ import (
+ 	"time"
+ 
+ 	"github.com/gorilla/websocket"
+-	"github.com/m-lab/go/memoryless"
++	//"github.com/m-lab/go/memoryless"
+ 	"github.com/m-lab/ndt-server/bbr"
+ 	"github.com/m-lab/ndt-server/fdcache"
+ 	"github.com/m-lab/ndt-server/logging"
+ 	"github.com/m-lab/ndt-server/ndt7/model"
+-	"github.com/m-lab/ndt-server/ndt7/spec"
++	//"github.com/m-lab/ndt-server/ndt7/spec"
+ 	"github.com/m-lab/ndt-server/tcpinfox"
+ )
+ 
+@@ -58,8 +58,8 @@ func loop(ctx context.Context, conn *websocket.Conn, UUID string, dst chan<- mod
+ 	logging.Logger.Debug("measurer: start")
+ 	defer logging.Logger.Debug("measurer: stop")
+ 	defer close(dst)
+-	measurerctx, cancel := context.WithTimeout(ctx, spec.DefaultRuntime)
+-	defer cancel()
++	//measurerctx, cancel := context.WithTimeout(ctx, spec.DefaultRuntime)
++	//defer cancel()
+ 	sockfp, err := getSocketAndPossiblyEnableBBR(conn)
+ 	if err != nil {
+ 		logging.Logger.WithError(err).Warn("getSocketAndPossiblyEnableBBR failed")
+@@ -74,11 +74,13 @@ func loop(ctx context.Context, conn *websocket.Conn, UUID string, dst chan<- mod
+ 	}
+ 	// Implementation note: the ticker will close its output channel
+ 	// after the controlling context is expired.
+-	ticker, err := memoryless.NewTicker(measurerctx, memoryless.Config{
+-		Min:      spec.MinPoissonSamplingInterval,
+-		Expected: spec.AveragePoissonSamplingInterval,
+-		Max:      spec.MaxPoissonSamplingInterval,
+-	})
++	//ticker, err := memoryless.NewTicker(measurerctx, memoryless.Config{
++	//	Min:      spec.MinPoissonSamplingInterval,
++	//	Expected: spec.AveragePoissonSamplingInterval,
++	//	Max:      spec.MaxPoissonSamplingInterval,
++	//})
++	ticker := time.NewTicker(100 * time.Millisecond)
++	err = nil
+ 	if err != nil {
+ 		logging.Logger.WithError(err).Warn("memoryless.NewTicker failed")
+ 		return
